@@ -16,9 +16,18 @@ ATLETAS = {
 
 def obter_access_token(refresh_token):
     if not refresh_token:
+        print("❌ Erro: refresh_token veio NULO ou VAZIO!")
         return None
         
     ref_token_limpo = refresh_token.strip()
+
+    # --- PRINT DE DIAGNÓSTICO (Não mostra seus códigos, apenas o tamanho deles) ---
+    print(f"--- VERIFICAÇÃO DE DADOS ENVIADOS ---")
+    print(f"CLIENT_ID carregado: '{CLIENT_ID}' (Tamanho: {len(CLIENT_ID)})")
+    print(f"CLIENT_SECRET tamanho: {len(CLIENT_SECRET)} caracteres")
+    print(f"REFRESH_TOKEN tamanho: {len(ref_token_limpo)} caracteres")
+    print(f"--------------------------------------")
+
     payload = {
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
