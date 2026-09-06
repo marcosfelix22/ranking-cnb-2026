@@ -11,6 +11,7 @@ NOME_ARQUIVO = 'Ranking_CNB_2026.xlsx'
 ATLETAS = {
     "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
     "Juliana Nogueira": os.environ.get('TOKEN_JULIANA'),
+    "Cristiano Silva": os.environ.get('TOKEN_CRISTIANO_SILVA'),
     # Para adicionar novos atletas no futuro, basta incluir aqui:
     # "Nome do Atleta": os.environ.get('TOKEN_NOME_DO_ATLETA'),
 }
