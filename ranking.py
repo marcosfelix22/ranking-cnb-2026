@@ -2,69 +2,36 @@ import os
 import requests
 import pandas as pd
 
-# --- CONFIGURAÇÕES ---
 CLIENT_ID = (os.environ.get('CLIENT_ID') or '').strip()
 CLIENT_SECRET = (os.environ.get('CLIENT_SECRET') or '').strip()
-NOME_ARQUIVO = 'Ranking_CNB_2026.xlsx'
 
-ATLETAS = {
-    "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
-    # "Flávio Brayner": os.environ.get('TOKEN_FLAVIO'),
+# Cole o seu 'code' novinho recém-copiado do navegador aqui:
+CODIGO_AUTORIZACAO = "bf76f0244188a1a85989dea5323e592b7ce19c58" 
+
+print("--- EXECUTANDO AUTENTICAÇÃO E CONSOLIDAÇÃO DO RANKING ---")
+
+payload_troca = {
+    'client_id': CLIENT_ID,
+    'client_secret': CLIENT_SECRET,
+    'code': CODIGO_AUTORIZACAO,
+    'grant_type': 'authorization_code'
 }
 
-def obter_access_token(refresh_token):
-    if not refresh_token:
-        print("❌ Secret do token não encontrado.")
-        return None
-        
-    ref_token_limpo = refresh_token.strip()
+res_troca = requests.post("https://www.strava.com/oauth/token", data=payload_troca)
 
-    payload = {
-        'client_id': CLIENT_ID,
-        'client_secret': CLIENT_SECRET,
-        'refresh_token': ref_token_limpo,
-        'grant_type': 'refresh_token'
-    }
+if res_troca.status_code == 200:
+    dados_oauth = res_troca.json()
+    access_token = dados_oauth.get('access_token')
+    refresh_token_oficial = dados_oauth.get('refresh_token')
     
-    try:
-        res = requests.post("https://www.strava.com/oauth/token", data=payload)
-        if res.status_code == 200:
-            dados = res.json()
-            return dados.get('access_token')
-        else:
-            print(f"Erro ao renovar token ({res.status_code}): {res.text}")
-            return None
-    except Exception as e:
-        print(f"Exceção ao obter access_token: {e}")
-        return None
-
-def formatar_km(valor):
-    return f"{valor:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") + " km"
-
-def formatar_alt(valor):
-    return f"{int(valor):,}".replace(",", ".") + " m"
-
-dados_ranking = []
-
-for nome_atleta, ref_token in ATLETAS.items():
-    if not ref_token:
-        print(f"Aviso: Secret do atleta '{nome_atleta}' não configurado.")
-        continue
-
-    # 1. Obtém o access_token válido gerado na hora
-    access_token = obter_access_token(ref_token)
-    if not access_token:
-        print(f"Erro: Não foi possível obter access_token para '{nome_atleta}'.")
-        continue
-
-    # 2. Usa o novo access_token com o formato correto 'Bearer <token>'
+    print("✅ Autenticação realizada com sucesso!")
+    print(f"🔑 SEU REFRESH TOKEN OFICIAL COM ESCOPO TOTAL É: {refresh_token_oficial}")
+    
     headers = {'Authorization': f'Bearer {access_token}'}
-    url = "https://www.strava.com/api/v3/athlete/activities"
+    res_act = requests.get("https://www.strava.com/api/v3/athlete/activities", headers=headers, params={'per_page': 200})
     
-    resposta = requests.get(url, headers=headers, params={'per_page': 200, 'page': 1})
-    
-    if resposta.status_code == 200:
-        atividades = resposta.json()
+    if res_act.status_code == 200:
+        atividades = res_act.json()
         km_total = 0.0
         alt_total = 0.0
         treinos = 0
@@ -72,35 +39,25 @@ for nome_atleta, ref_token in ATLETAS.items():
         for act in atividades:
             tipo = act.get('type')
             data_inicio = act.get('start_date', '')
-            
             if tipo in ['Run', 'TrailRun'] and data_inicio.startswith('2026'):
-                dist_km = act.get('distance', 0.0) / 1000.0
-                alt = act.get('total_elevation_gain', 0.0)
-                
-                km_total += dist_km
-                alt_total += alt
+                km_total += act.get('distance', 0.0) / 1000.0
+                alt_total += act.get('total_elevation_gain', 0.0)
                 treinos += 1
-
-        dados_ranking.append({
-            'Atleta': nome_atleta,
-            'KM Total Bruto': km_total,
-            'KM Total': formatar_km(km_total),
-            'Altimetria (m)': formatar_alt(alt_total),
+                
+        print(f"✓ Marcos Felix: {km_total:.1f} km em {treinos} treinos.")
+        
+        df = pd.DataFrame([{
+            'Atleta': 'Marcos Felix', 
+            'KM Total': f"{km_total:,.1f}".replace(".", ",") + " km", 
+            'Altimetria (m)': f"{int(alt_total):,} m".replace(",", "."), 
             'Treinos': treinos
-        })
-        print(f"✓ {nome_atleta}: {formatar_km(km_total)} ({treinos} treinos)")
+        }])
+        
+        with pd.ExcelWriter('Ranking_CNB_2026.xlsx', engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Ranking CNB 2026', index=False)
+            
+        print("✅ Planilha Ranking_CNB_2026.xlsx gerada e atualizada com sucesso!")
     else:
-        print(f"Erro na consulta do Strava para {nome_atleta}: Status {resposta.status_code} - {resposta.text}")
-
-# Monta o Ranking e salva
-if dados_ranking:
-    df = pd.DataFrame(dados_ranking)
-    df = df.sort_values(by='KM Total Bruto', ascending=False)
-    df = df.drop(columns=['KM Total Bruto'])
+        print(f"❌ Erro na consulta das atividades: Status {res_act.status_code} - {res_act.text}")
 else:
-    df = pd.DataFrame(columns=['Atleta', 'KM Total', 'Altimetria (m)', 'Treinos'])
-
-with pd.ExcelWriter(NOME_ARQUIVO, engine='openpyxl') as writer:
-    df.to_excel(writer, sheet_name='Ranking CNB 2026', index=False)
-
-print(f"Sincronização da planilha {NOME_ARQUIVO} concluída com sucesso!")
+    print(f"❌ Erro na troca do código: Status {res_troca.status_code} - {res_troca.text}")
