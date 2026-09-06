@@ -1,0 +1,39 @@
+name: Atualizar Ranking CNB 2026
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Executa a cada hora
+  workflow_dispatch: # Permite rodar manualmente
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install requests pandas openpyxl
+
+      - name: Run Ranking Script
+        env:
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          TOKEN_MARCOS: ${{ secrets.TOKEN_MARCOS }}
+        run: python ranking.py
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "Robo CNB 2026"
+          git config --global user.email "bot@github.com"
+          git add Ranking_CNB_2026.xlsx
+          git diff --quiet && git diff --staged --quiet || git commit -m "Atualização automática: Ranking CNB 2026"
+          git push origin HEAD:main
