@@ -2,81 +2,106 @@ import os
 import requests
 import pandas as pd
 
+# --- CONFIGURAÇÕES ---
 CLIENT_ID = (os.environ.get('CLIENT_ID') or '').strip()
 CLIENT_SECRET = (os.environ.get('CLIENT_SECRET') or '').strip()
-TOKEN_MARCOS = (os.environ.get('TOKEN_MARCOS') or '').strip()
+NOME_ARQUIVO = 'Ranking_CNB_2026.xlsx'
 
-# Cole o novo 'code' da Juliana copiado da URL aqui:
-CODIGO_JULIANA = "8a2b8681422d2e8b686c23c1cec8cc002fdb18f7"
-
-print("--- EXECUTANDO TROCA DIRETA E ATUALIZAÇÃO DO RANKING ---")
+# Dicionário de Atletas
+ATLETAS = {
+    "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
+    "Juliana Nogueira": os.environ.get('TOKEN_JULIANA'),
+}
 
 def obter_access_token(refresh_token):
     if not refresh_token:
+        print("❌ Secret do token não encontrado.")
         return None
+        
+    ref_token_limpo = refresh_token.strip()
+
     payload = {
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
-        'refresh_token': refresh_token.strip(),
+        'refresh_token': ref_token_limpo,
         'grant_type': 'refresh_token'
     }
+    
     try:
         res = requests.post("https://www.strava.com/oauth/token", data=payload)
-        return res.json().get('access_token') if res.status_code == 200 else None
-    except:
+        if res.status_code == 200:
+            dados = res.json()
+            return dados.get('access_token')
+        else:
+            print(f"Erro ao renovar token ({res.status_code}): {res.text}")
+            return None
+    except Exception as e:
+        print(f"Exceção ao obter access_token: {e}")
         return None
 
-def obter_dados_atleta(access_token):
-    headers = {'Authorization': f'Bearer {access_token}'}
-    res = requests.get("https://www.strava.com/api/v3/athlete/activities", headers=headers, params={'per_page': 200})
-    if res.status_code == 200:
-        km_total, alt_total, treinos = 0.0, 0.0, 0
-        for act in res.json():
-            if act.get('type') in ['Run', 'TrailRun'] and act.get('start_date', '').startswith('2026'):
-                km_total += act.get('distance', 0.0) / 1000.0
-                alt_total += act.get('total_elevation_gain', 0.0)
-                treinos += 1
-        return km_total, alt_total, treinos
-    return None, None, None
+def formatar_km(valor):
+    return f"{valor:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") + " km"
+
+def formatar_alt(valor):
+    return f"{int(valor):,}".replace(",", ".") + " m"
 
 dados_ranking = []
 
-# 1. Processa Marcos Felix via Refresh Token
-token_marcos = obter_access_token(TOKEN_MARCOS)
-if token_marcos:
-    km, alt, treinos = obter_dados_atleta(token_marcos)
-    if km is not None:
-        dados_ranking.append({'Atleta': 'Marcos Felix', 'KM Total Bruto': km, 'KM Total': f"{km:,.1f}".replace(".", ",") + " km", 'Altimetria (m)': f"{int(alt):,} m".replace(",", "."), 'Treinos': treinos})
-        print(f"✓ Marcos Felix: {km:.1f} km em {treinos} treinos")
+print("--- EXECUTANDO ATUALIZAÇÃO AUTOMÁTICA DO RANKING CNB 2026 ---")
 
-# 2. Processa Juliana Nogueira trocando o 'code' em tempo de execução
-payload_troca = {
-    'client_id': CLIENT_ID,
-    'client_secret': CLIENT_SECRET,
-    'code': CODIGO_JULIANA,
-    'grant_type': 'authorization_code'
-}
-res_troca = requests.post("https://www.strava.com/oauth/token", data=payload_troca)
+for nome_atleta, ref_token in ATLETAS.items():
+    if not ref_token:
+        print(f"Aviso: Secret do atleta '{nome_atleta}' não configurado.")
+        continue
 
-if res_troca.status_code == 200:
-    dados_juliana = res_troca.json()
-    access_token_juliana = dados_juliana.get('access_token')
-    refresh_token_juliana = dados_juliana.get('refresh_token')
+    access_token = obter_access_token(ref_token)
+    if not access_token:
+        print(f"Erro: Não foi possível obter access_token para '{nome_atleta}'.")
+        continue
+
+    headers = {'Authorization': f'Bearer {access_token}'}
+    url = "https://www.strava.com/api/v3/athlete/activities"
     
-    print("✅ Troca do código da Juliana realizada com sucesso!")
-    print(f"🔑 REFRESH TOKEN OFICIAL DA JULIANA: {refresh_token_juliana}")
+    resposta = requests.get(url, headers=headers, params={'per_page': 200, 'page': 1})
     
-    km_j, alt_j, treinos_j = obter_dados_atleta(access_token_juliana)
-    if km_j is not None:
-        dados_ranking.append({'Atleta': 'Juliana Nogueira', 'KM Total Bruto': km_j, 'KM Total': f"{km_j:,.1f}".replace(".", ",") + " km", 'Altimetria (m)': f"{int(alt_j):,} m".replace(",", "."), 'Treinos': treinos_j})
-        print(f"✓ Juliana Nogueira: {km_j:.1f} km em {treinos_j} treinos")
-else:
-    print(f"❌ Erro na troca do código da Juliana: Status {res_troca.status_code} - {res_troca.text}")
+    if resposta.status_code == 200:
+        atividades = resposta.json()
+        km_total = 0.0
+        alt_total = 0.0
+        treinos = 0
+        
+        for act in atividades:
+            tipo = act.get('type')
+            data_inicio = act.get('start_date', '')
+            
+            if tipo in ['Run', 'TrailRun'] and data_inicio.startswith('2026'):
+                dist_km = act.get('distance', 0.0) / 1000.0
+                alt = act.get('total_elevation_gain', 0.0)
+                
+                km_total += dist_km
+                alt_total += alt
+                treinos += 1
 
-# 3. Monta e salva o Ranking
+        dados_ranking.append({
+            'Atleta': nome_atleta,
+            'KM Total Bruto': km_total,
+            'KM Total': formatar_km(km_total),
+            'Altimetria (m)': formatar_alt(alt_total),
+            'Treinos': treinos
+        })
+        print(f"✓ {nome_atleta}: {formatar_km(km_total)} em {treinos} treinos")
+    else:
+        print(f"Erro na consulta do Strava para {nome_atleta}: Status {resposta.status_code} - {resposta.text}")
+
+# Ordena do maior para o menor em KM Total Bruto
 if dados_ranking:
     df = pd.DataFrame(dados_ranking)
-    df = df.sort_values(by='KM Total Bruto', ascending=False).drop(columns=['KM Total Bruto'])
-    with pd.ExcelWriter('Ranking_CNB_2026.xlsx', engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Ranking CNB 2026', index=False)
-    print("✅ Planilha Ranking_CNB_2026.xlsx gerada e atualizada com sucesso!")
+    df = df.sort_values(by='KM Total Bruto', ascending=False)
+    df = df.drop(columns=['KM Total Bruto'])
+else:
+    df = pd.DataFrame(columns=['Atleta', 'KM Total', 'Altimetria (m)', 'Treinos'])
+
+with pd.ExcelWriter(NOME_ARQUIVO, engine='openpyxl') as writer:
+    df.to_excel(writer, sheet_name='Ranking CNB 2026', index=False)
+
+print(f"✅ Sincronização da planilha {NOME_ARQUIVO} concluída com sucesso!")
