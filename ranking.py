@@ -2,37 +2,43 @@ import os
 import requests
 import pandas as pd
 
-# CONFIGURAÇÕES
+# --- CONFIGURAÇÕES ---
 CLIENT_ID = (os.environ.get('CLIENT_ID') or '').strip()
 CLIENT_SECRET = (os.environ.get('CLIENT_SECRET') or '').strip()
-SUPABASE_URL = (os.environ.get('SUPABASE_URL') or '').strip()
-SUPABASE_KEY = (os.environ.get('SUPABASE_KEY') or '').strip()
+
+# Endpoint da API criada no Lovable Cloud
+URL_API_LOVABLE = "https://desafiocnb.lovable.app/api/atletas"
 NOME_ARQUIVO = 'Ranking_CNB_2026.xlsx'
 
-def buscar_atletas_supabase():
-    """Busca a lista de atletas e seus refresh_tokens salvos no Supabase pelo Lovable"""
-    headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {SUPABASE_KEY}'
-    }
-    # Consulta a tabela 'atletas' do Supabase
-    url = f"{SUPABASE_URL}/rest/v1/atletas?select=nome,refresh_token"
-    res = requests.get(url, headers=headers)
-    if res.status_code == 200:
-        return res.json()
-    else:
-        print(f"Erro ao buscar atletas no Supabase: {res.status_code} - {res.text}")
+def buscar_atletas_lovable():
+    """Busca a lista de atletas cadastrados via Lovable Cloud"""
+    try:
+        res = requests.get(URL_API_LOVABLE, timeout=15)
+        if res.status_code == 200:
+            return res.json()
+        else:
+            print(f"❌ Erro ao buscar atletas na API ({res.status_code}): {res.text}")
+            return []
+    except Exception as e:
+        print(f"❌ Exceção ao conectar na API do Lovable: {e}")
         return []
 
 def obter_access_token(refresh_token):
+    if not refresh_token:
+        return None
+
     payload = {
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
         'refresh_token': refresh_token.strip(),
         'grant_type': 'refresh_token'
     }
-    res = requests.post("https://www.strava.com/oauth/token", data=payload)
-    return res.json().get('access_token') if res.status_code == 200 else None
+    
+    try:
+        res = requests.post("https://www.strava.com/oauth/token", data=payload)
+        return res.json().get('access_token') if res.status_code == 200 else None
+    except:
+        return None
 
 def formatar_km(valor):
     return f"{valor:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") + " km"
@@ -42,15 +48,18 @@ def formatar_alt(valor):
 
 print("--- EXECUTANDO ATUALIZAÇÃO AUTOMÁTICA DO RANKING CNB 2026 ---")
 
-# 1. Puxa todos os atletas cadastrados pelo Lovable
-lista_atletas = buscar_atletas_supabase()
+lista_atletas = buscar_atletas_lovable()
 dados_ranking = []
 
+if not lista_atletas:
+    print("⚠️ Nenhum atleta retornado pela API ou tabela vazia.")
+
 for atleta in lista_atletas:
-    nome = atleta.get('nome')
+    nome = atleta.get('nome') or atleta.get('name') or 'Atleta Sem Nome'
     ref_token = atleta.get('refresh_token')
     
     if not ref_token:
+        print(f"Aviso: Atleta '{nome}' sem refresh_token salvo.")
         continue
 
     access_token = obter_access_token(ref_token)
@@ -67,7 +76,10 @@ for atleta in lista_atletas:
         km_total, alt_total, treinos = 0.0, 0.0, 0
         
         for act in atividades:
-            if act.get('type') in ['Run', 'TrailRun'] and act.get('start_date', '').startswith('2026'):
+            tipo = act.get('type')
+            data_inicio = act.get('start_date', '')
+            
+            if tipo in ['Run', 'TrailRun'] and data_inicio.startswith('2026'):
                 km_total += act.get('distance', 0.0) / 1000.0
                 alt_total += act.get('total_elevation_gain', 0.0)
                 treinos += 1
@@ -80,8 +92,9 @@ for atleta in lista_atletas:
             'Treinos': treinos
         })
         print(f"✓ {nome}: {formatar_km(km_total)} em {treinos} treinos")
+    else:
+        print(f"Erro na consulta do Strava para {nome}: Status {res.status_code}")
 
-# 2. Ordena e gera a planilha
 if dados_ranking:
     df = pd.DataFrame(dados_ranking)
     df = df.sort_values(by='KM Total Bruto', ascending=False).drop(columns=['KM Total Bruto'])
