@@ -7,26 +7,17 @@ CLIENT_ID = (os.environ.get('CLIENT_ID') or '').strip()
 CLIENT_SECRET = (os.environ.get('CLIENT_SECRET') or '').strip()
 NOME_ARQUIVO = 'Ranking_CNB_2026.xlsx'
 
-# Lista única de Atletas do Desafio "Ranking CNB 2026"
 ATLETAS = {
     "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
-    # Novos atletas entram aqui conforme enviarem autorização:
     # "Flávio Brayner": os.environ.get('TOKEN_FLAVIO'),
 }
 
 def obter_access_token(refresh_token):
     if not refresh_token:
-        print("❌ Erro: refresh_token veio NULO ou VAZIO!")
+        print("❌ Secret do token não encontrado.")
         return None
         
     ref_token_limpo = refresh_token.strip()
-
-    # --- PRINT DE DIAGNÓSTICO (Não mostra seus códigos, apenas o tamanho deles) ---
-    print(f"--- VERIFICAÇÃO DE DADOS ENVIADOS ---")
-    print(f"CLIENT_ID carregado: '{CLIENT_ID}' (Tamanho: {len(CLIENT_ID)})")
-    print(f"CLIENT_SECRET tamanho: {len(CLIENT_SECRET)} caracteres")
-    print(f"REFRESH_TOKEN tamanho: {len(ref_token_limpo)} caracteres")
-    print(f"--------------------------------------")
 
     payload = {
         'client_id': CLIENT_ID,
@@ -38,7 +29,8 @@ def obter_access_token(refresh_token):
     try:
         res = requests.post("https://www.strava.com/oauth/token", data=payload)
         if res.status_code == 200:
-            return res.json().get('access_token')
+            dados = res.json()
+            return dados.get('access_token')
         else:
             print(f"Erro ao renovar token ({res.status_code}): {res.text}")
             return None
@@ -59,11 +51,13 @@ for nome_atleta, ref_token in ATLETAS.items():
         print(f"Aviso: Secret do atleta '{nome_atleta}' não configurado.")
         continue
 
+    # 1. Obtém o access_token válido gerado na hora
     access_token = obter_access_token(ref_token)
     if not access_token:
         print(f"Erro: Não foi possível obter access_token para '{nome_atleta}'.")
         continue
 
+    # 2. Usa o novo access_token com o formato correto 'Bearer <token>'
     headers = {'Authorization': f'Bearer {access_token}'}
     url = "https://www.strava.com/api/v3/athlete/activities"
     
@@ -96,8 +90,9 @@ for nome_atleta, ref_token in ATLETAS.items():
         })
         print(f"✓ {nome_atleta}: {formatar_km(km_total)} ({treinos} treinos)")
     else:
-        print(f"Erro na consulta do Strava para {nome_atleta}: Status {resposta.status_code}")
+        print(f"Erro na consulta do Strava para {nome_atleta}: Status {resposta.status_code} - {resposta.text}")
 
+# Monta o Ranking e salva
 if dados_ranking:
     df = pd.DataFrame(dados_ranking)
     df = df.sort_values(by='KM Total Bruto', ascending=False)
