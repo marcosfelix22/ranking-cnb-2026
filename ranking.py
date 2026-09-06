@@ -7,10 +7,10 @@ CLIENT_ID = (os.environ.get('CLIENT_ID') or '').strip()
 CLIENT_SECRET = (os.environ.get('CLIENT_SECRET') or '').strip()
 NOME_ARQUIVO = 'Ranking_CNB_2026.xlsx'
 
-# Dicionário de atletas (adicione novos atletas conforme receber os tokens deles)
+# Dicionário de Atletas
 ATLETAS = {
     "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
-    # "Flávio Brayner": os.environ.get('TOKEN_FLAVIO'),
+    "Juliana Nogueira": os.environ.get('TOKEN_JULIANA'),
 }
 
 def obter_access_token(refresh_token):
@@ -54,13 +54,11 @@ for nome_atleta, ref_token in ATLETAS.items():
         print(f"Aviso: Secret do atleta '{nome_atleta}' não configurado.")
         continue
 
-    # 1. Obtém o access_token válido renovado automaticamente
     access_token = obter_access_token(ref_token)
     if not access_token:
         print(f"Erro: Não foi possível obter access_token para '{nome_atleta}'.")
         continue
 
-    # 2. Requisita as atividades do atleta no Strava
     headers = {'Authorization': f'Bearer {access_token}'}
     url = "https://www.strava.com/api/v3/athlete/activities"
     
@@ -76,7 +74,6 @@ for nome_atleta, ref_token in ATLETAS.items():
             tipo = act.get('type')
             data_inicio = act.get('start_date', '')
             
-            # Filtra corridas do ano de 2026
             if tipo in ['Run', 'TrailRun'] and data_inicio.startswith('2026'):
                 dist_km = act.get('distance', 0.0) / 1000.0
                 alt = act.get('total_elevation_gain', 0.0)
@@ -96,7 +93,7 @@ for nome_atleta, ref_token in ATLETAS.items():
     else:
         print(f"Erro na consulta do Strava para {nome_atleta}: Status {resposta.status_code} - {resposta.text}")
 
-# 3. Ordena o Ranking e salva na planilha Excel
+# Ordena do maior para o menor quilômetro rodado
 if dados_ranking:
     df = pd.DataFrame(dados_ranking)
     df = df.sort_values(by='KM Total Bruto', ascending=False)
