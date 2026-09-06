@@ -28,7 +28,7 @@ jobs:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           TOKEN_MARCOS: ${{ secrets.TOKEN_MARCOS }}
-          TOKEN_JULIANA_NOGUEIRA: ${{ secrets.TOKEN_JULIANA_NOGUEIRA }}
+          TOKEN_JULIANA: ${{ secrets.TOKEN_JULIANA }}
         run: python ranking.py
 
       - name: Commit and Push Changes
