@@ -2,42 +2,37 @@ import os
 import requests
 import pandas as pd
 
-# --- CONFIGURAÇÕES ---
+# CONFIGURAÇÕES
 CLIENT_ID = (os.environ.get('CLIENT_ID') or '').strip()
 CLIENT_SECRET = (os.environ.get('CLIENT_SECRET') or '').strip()
+SUPABASE_URL = (os.environ.get('SUPABASE_URL') or '').strip()
+SUPABASE_KEY = (os.environ.get('SUPABASE_KEY') or '').strip()
 NOME_ARQUIVO = 'Ranking_CNB_2026.xlsx'
 
-# Dicionário de Atletas
-ATLETAS = {
-    "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
-    "Juliana Nogueira": os.environ.get('TOKEN_JULIANA'),
-}
+def buscar_atletas_supabase():
+    """Busca a lista de atletas e seus refresh_tokens salvos no Supabase pelo Lovable"""
+    headers = {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}'
+    }
+    # Consulta a tabela 'atletas' do Supabase
+    url = f"{SUPABASE_URL}/rest/v1/atletas?select=nome,refresh_token"
+    res = requests.get(url, headers=headers)
+    if res.status_code == 200:
+        return res.json()
+    else:
+        print(f"Erro ao buscar atletas no Supabase: {res.status_code} - {res.text}")
+        return []
 
 def obter_access_token(refresh_token):
-    if not refresh_token:
-        print("❌ Secret do token não encontrado.")
-        return None
-        
-    ref_token_limpo = refresh_token.strip()
-
     payload = {
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
-        'refresh_token': ref_token_limpo,
+        'refresh_token': refresh_token.strip(),
         'grant_type': 'refresh_token'
     }
-    
-    try:
-        res = requests.post("https://www.strava.com/oauth/token", data=payload)
-        if res.status_code == 200:
-            dados = res.json()
-            return dados.get('access_token')
-        else:
-            print(f"Erro ao renovar token ({res.status_code}): {res.text}")
-            return None
-    except Exception as e:
-        print(f"Exceção ao obter access_token: {e}")
-        return None
+    res = requests.post("https://www.strava.com/oauth/token", data=payload)
+    return res.json().get('access_token') if res.status_code == 200 else None
 
 def formatar_km(valor):
     return f"{valor:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") + " km"
@@ -45,59 +40,51 @@ def formatar_km(valor):
 def formatar_alt(valor):
     return f"{int(valor):,}".replace(",", ".") + " m"
 
-dados_ranking = []
-
 print("--- EXECUTANDO ATUALIZAÇÃO AUTOMÁTICA DO RANKING CNB 2026 ---")
 
-for nome_atleta, ref_token in ATLETAS.items():
+# 1. Puxa todos os atletas cadastrados pelo Lovable
+lista_atletas = buscar_atletas_supabase()
+dados_ranking = []
+
+for atleta in lista_atletas:
+    nome = atleta.get('nome')
+    ref_token = atleta.get('refresh_token')
+    
     if not ref_token:
-        print(f"Aviso: Secret do atleta '{nome_atleta}' não configurado.")
         continue
 
     access_token = obter_access_token(ref_token)
     if not access_token:
-        print(f"Erro: Não foi possível obter access_token para '{nome_atleta}'.")
+        print(f"Erro ao obter access_token para '{nome}'.")
         continue
 
     headers = {'Authorization': f'Bearer {access_token}'}
     url = "https://www.strava.com/api/v3/athlete/activities"
+    res = requests.get(url, headers=headers, params={'per_page': 200, 'page': 1})
     
-    resposta = requests.get(url, headers=headers, params={'per_page': 200, 'page': 1})
-    
-    if resposta.status_code == 200:
-        atividades = resposta.json()
-        km_total = 0.0
-        alt_total = 0.0
-        treinos = 0
+    if res.status_code == 200:
+        atividades = res.json()
+        km_total, alt_total, treinos = 0.0, 0.0, 0
         
         for act in atividades:
-            tipo = act.get('type')
-            data_inicio = act.get('start_date', '')
-            
-            if tipo in ['Run', 'TrailRun'] and data_inicio.startswith('2026'):
-                dist_km = act.get('distance', 0.0) / 1000.0
-                alt = act.get('total_elevation_gain', 0.0)
-                
-                km_total += dist_km
-                alt_total += alt
+            if act.get('type') in ['Run', 'TrailRun'] and act.get('start_date', '').startswith('2026'):
+                km_total += act.get('distance', 0.0) / 1000.0
+                alt_total += act.get('total_elevation_gain', 0.0)
                 treinos += 1
 
         dados_ranking.append({
-            'Atleta': nome_atleta,
+            'Atleta': nome,
             'KM Total Bruto': km_total,
             'KM Total': formatar_km(km_total),
             'Altimetria (m)': formatar_alt(alt_total),
             'Treinos': treinos
         })
-        print(f"✓ {nome_atleta}: {formatar_km(km_total)} em {treinos} treinos")
-    else:
-        print(f"Erro na consulta do Strava para {nome_atleta}: Status {resposta.status_code} - {resposta.text}")
+        print(f"✓ {nome}: {formatar_km(km_total)} em {treinos} treinos")
 
-# Ordena do maior para o menor em KM Total Bruto
+# 2. Ordena e gera a planilha
 if dados_ranking:
     df = pd.DataFrame(dados_ranking)
-    df = df.sort_values(by='KM Total Bruto', ascending=False)
-    df = df.drop(columns=['KM Total Bruto'])
+    df = df.sort_values(by='KM Total Bruto', ascending=False).drop(columns=['KM Total Bruto'])
 else:
     df = pd.DataFrame(columns=['Atleta', 'KM Total', 'Altimetria (m)', 'Treinos'])
 
