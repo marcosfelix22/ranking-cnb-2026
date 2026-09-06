@@ -12,8 +12,6 @@ ATLETAS = {
     "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
     "Juliana Nogueira": os.environ.get('TOKEN_JULIANA'),
     "Cristiano Silva": os.environ.get('TOKEN_CRISTIANO_SILVA'),
-    # Para adicionar novos atletas no futuro, basta incluir aqui:
-    # "Nome do Atleta": os.environ.get('TOKEN_NOME_DO_ATLETA'),
 }
 
 def obter_access_token(refresh_token):
@@ -72,12 +70,17 @@ for nome_atleta, ref_token in ATLETAS.items():
         
         for act in atividades:
             tipo = act.get('type')
-            data_inicio = act.get('start_date', '')
+            # Usando a data local (fuso horário do atleta)
+            data_inicio = act.get('start_date_local', '')
             
-            # Filtra apenas corridas e corridas de trilha realizadas em 2026
+            # Filtra apenas corridas e corridas de trilha em 2026
             if tipo in ['Run', 'TrailRun'] and data_inicio.startswith('2026'):
                 dist_km = act.get('distance', 0.0) / 1000.0
                 alt = act.get('total_elevation_gain', 0.0)
+                
+                # Debug para Marcos Felix: mostra todos os treinos no log do GitHub Actions
+                if nome_atleta == "Marcos Felix":
+                    print(f"  └─ [{data_inicio[:10]}] {act.get('name')}: {dist_km:.2f} km")
                 
                 km_total += dist_km
                 alt_total += alt
