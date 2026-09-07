@@ -30,6 +30,7 @@ jobs:
           TOKEN_MARCOS: ${{ secrets.TOKEN_MARCOS }}
           TOKEN_JULIANA: ${{ secrets.TOKEN_JULIANA_NOGUEIRA }}
           TOKEN_CRISTIANO_SILVA: ${{ secrets.TOKEN_CRISTIANO_SILVA }}
+          TOKEN_FABIO: ${{ secrets.TOKEN_FABIO }}
         run: python ranking.py
 
       - name: Commit and Push Changes
