@@ -12,6 +12,7 @@ ATLETAS = {
     "Marcos Felix": os.environ.get('TOKEN_MARCOS'),
     "Juliana Nogueira": os.environ.get('TOKEN_JULIANA'),
     "Cristiano Silva": os.environ.get('TOKEN_CRISTIANO_SILVA'),
+    "Fabio Oliveira": os.environ.get('TOKEN_FABIO'),
 }
 
 def obter_access_token(refresh_token):
